@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>YAMAPコース編集ツール</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; background: #fdfdfd; }
+        .box { background: white; padding: 25px; border: 2px solid #333; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        textarea { width: 100%; height: 150px; margin: 10px 0; padding: 12px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        button { flex: 1; padding: 15px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
+        .btn-main { background: #000; color: #fff; }
+        .btn-copy { background: #2563eb; color: #fff; }
+        
+        /* 編集エリアのスタイル */
+        #editArea { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding: 15px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; }
+        .chip { display: inline-flex; align-items: center; background: #fff; border: 1px solid #ddd; padding: 5px 10px; border-radius: 20px; font-size: 14px; cursor: pointer; transition: 0.2s; }
+        .chip:hover { background: #fee2e2; border-color: #ef4444; color: #ef4444; }
+        .chip::after { content: "×"; margin-left: 6px; font-weight: normal; color: #999; }
+        .time-label { color: #64748b; font-size: 13px; display: flex; align-items: center; }
+        
+        #finalResult { margin-top: 15px; font-weight: bold; line-height: 1.6; word-break: break-all; }
+        .hint { font-size: 12px; color: #666; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h3>YAMAPコース編集</h3>
+        <textarea id="txt" placeholder="S地点からG地点まで貼り付け"></textarea>
+        <div class="btn-group">
+            <button class="btn-main" onclick="process()">地点を抽出</button>
+        </div>
+
+        <div id="editArea" style="display:none;">
+            <!-- ここに地点ボタンが並ぶ -->
+        </div>
+
+        <div id="finalResult"></div>
+        
+        <div id="copySection" style="display:none; margin-top:15px;">
+            <button class="btn-copy" onclick="copyFinal()">最終コースをコピー</button>
+            <p class="hint">※地点を消すと、前後のタイムは自動で合算されます</p>
+        </div>
+    </div>
+
+    <script>
+        let courseData = [];
+
+        function process() {
+            const val = document.getElementById('txt').value;
+            const lines = val.split('\n').map(l => l.trim()).filter(l => l !== "");
+            
+            courseData = [];
+            let points = [];
+            let times = [];
+
+            // 1. データの仕分け
+            for (let line of lines) {
+                if (/^\d{2}:\d{2}$/.test(line)) continue;
+                if (/^\d+$/.test(line)) {
+                    times.push(parseInt(line));
+                } else {
+                    points.push(line);
+                }
+            }
+
+            // 2. 内部用データ構造作成
+            for (let i = 0; i < points.length; i++) {
+                courseData.push({
+                    name: points[i],
+                    nextTime: times[i] || 0
+                });
+            }
+
+            render();
+        }
+
+        function render() {
+            const editArea = document.getElementById('editArea');
+            const finalResult = document.getElementById('finalResult');
+            const copySection = document.getElementById('copySection');
+            
+            editArea.innerHTML = "";
+            editArea.style.display = "flex";
+            copySection.style.display = "block";
+
+            let displayText = "";
+
+            courseData.forEach((item, index) => {
+                // 編集用チップの作成
+                const chip = document.createElement('div');
+                chip.className = 'chip';
+                chip.innerText = item.name;
+                chip.onclick = () => removePoint(index);
+                editArea.appendChild(chip);
+
+                // 表示用テキストの構築
+                displayText += item.name;
+
+                if (index < courseData.length - 1) {
+                    const h = Math.floor(item.nextTime / 60);
+                    const m = item.nextTime % 60;
+                    const timeStr = `ー${h}:${m.toString().padStart(2, '0')}ー`;
+                    
+                    const timeLabel = document.createElement('span');
+                    timeLabel.className = 'time-label';
+                    timeLabel.innerText = timeStr;
+                    editArea.appendChild(timeLabel);
+                    
+                    displayText += timeStr;
+                }
+            });
+
+            finalResult.innerText = displayText;
+        }
+
+        function removePoint(index) {
+            if (courseData.length <= 1) return;
+
+            // 地点を消す際、その地点の「次のタイム」を前の地点に合算する
+            if (index > 0) {
+                courseData[index - 1].nextTime += courseData[index].nextTime;
+            }
+            
+            courseData.splice(index, 1);
+            render();
+        }
+
+        function copyFinal() {
+            const text = document.getElementById('finalResult').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert("最終コースをコピーしました！");
+            });
+        }
+    </script>
+</body>
+</html>
