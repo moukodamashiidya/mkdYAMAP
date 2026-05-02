@@ -2,44 +2,34 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>YAMAPコース編集ツール</title>
+    <title>YAMAPコース編集（スペース時間対応）</title>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 20px; background: #fdfdfd; }
         .box { background: white; padding: 25px; border: 2px solid #333; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        textarea { width: 100%; height: 150px; margin: 10px 0; padding: 12px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        textarea { width: 100%; height: 200px; margin: 10px 0; padding: 12px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
         .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
         button { flex: 1; padding: 15px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; font-size: 16px; }
         .btn-main { background: #000; color: #fff; }
         .btn-copy { background: #2563eb; color: #fff; }
-        
-        /* 編集エリアのスタイル */
         #editArea { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; padding: 15px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; }
-        .chip { display: inline-flex; align-items: center; background: #fff; border: 1px solid #ddd; padding: 5px 10px; border-radius: 20px; font-size: 14px; cursor: pointer; transition: 0.2s; }
+        .chip { display: inline-flex; align-items: center; background: #fff; border: 1px solid #ddd; padding: 5px 10px; border-radius: 20px; font-size: 14px; cursor: pointer; }
         .chip:hover { background: #fee2e2; border-color: #ef4444; color: #ef4444; }
-        .chip::after { content: "×"; margin-left: 6px; font-weight: normal; color: #999; }
-        .time-label { color: #64748b; font-size: 13px; display: flex; align-items: center; }
-        
+        .chip::after { content: "×"; margin-left: 6px; color: #999; }
+        .time-label { color: #64748b; font-size: 13px; display: flex; align-items: center; font-family: monospace; }
         #finalResult { margin-top: 15px; font-weight: bold; line-height: 1.6; word-break: break-all; }
-        .hint { font-size: 12px; color: #666; margin-top: 5px; }
     </style>
 </head>
 <body>
     <div class="box">
         <h3>YAMAPコース編集</h3>
-        <textarea id="txt" placeholder="S地点からG地点まで貼り付け"></textarea>
+        <textarea id="txt" placeholder="1 45（1時間45分）のような表記に対応しました"></textarea>
         <div class="btn-group">
             <button class="btn-main" onclick="process()">地点を抽出</button>
         </div>
-
-        <div id="editArea" style="display:none;">
-            <!-- ここに地点ボタンが並ぶ -->
-        </div>
-
+        <div id="editArea" style="display:none;"></div>
         <div id="finalResult"></div>
-        
         <div id="copySection" style="display:none; margin-top:15px;">
             <button class="btn-copy" onclick="copyFinal()">最終コースをコピー</button>
-            <p class="hint">※地点を消すと、前後のタイムは自動で合算されます</p>
         </div>
     </div>
 
@@ -54,82 +44,82 @@
             let points = [];
             let times = [];
 
-            // 1. データの仕分け
             for (let line of lines) {
-                if (/^\d{2}:\d{2}$/.test(line)) continue;
-                if (/^\d+$/.test(line)) {
+                // 時刻 (07:00など) は無視
+                if (/^\d{1,2}:\d{2}$/.test(line)) continue;
+
+                // タイムの判定
+                // パターン1: "1 45" (1時間45分)
+                // パターン2: "20" (20分)
+                // パターン3: "1時間20" など
+                if (/^\d+\s+\d+$/.test(line)) {
+                    const parts = line.split(/\s+/);
+                    const h = parseInt(parts[0]);
+                    const m = parseInt(parts[1]);
+                    times.push(h * 60 + m);
+                } else if (/^\d+$/.test(line)) {
                     times.push(parseInt(line));
+                } else if (line.includes("時間")) {
+                    const h = parseInt(line.split("時間")[0]) || 0;
+                    const m = parseInt(line.split("時間")[1]) || 0;
+                    times.push(h * 60 + m);
                 } else {
+                    // それ以外は地点名
                     points.push(line);
                 }
             }
 
-            // 2. 内部用データ構造作成
             for (let i = 0; i < points.length; i++) {
-                courseData.push({
-                    name: points[i],
-                    nextTime: times[i] || 0
-                });
+                courseData.push({ name: points[i], nextTime: times[i] || 0 });
             }
-
             render();
+        }
+
+        function formatTime(totalMin) {
+            const h = Math.floor(totalMin / 60);
+            const m = totalMin % 60;
+            return `ー${h}:${m.toString().padStart(2, '0')}ー`;
         }
 
         function render() {
             const editArea = document.getElementById('editArea');
             const finalResult = document.getElementById('finalResult');
             const copySection = document.getElementById('copySection');
-            
             editArea.innerHTML = "";
             editArea.style.display = "flex";
             copySection.style.display = "block";
 
             let displayText = "";
-
             courseData.forEach((item, index) => {
-                // 編集用チップの作成
                 const chip = document.createElement('div');
                 chip.className = 'chip';
                 chip.innerText = item.name;
                 chip.onclick = () => removePoint(index);
                 editArea.appendChild(chip);
 
-                // 表示用テキストの構築
                 displayText += item.name;
-
                 if (index < courseData.length - 1) {
-                    const h = Math.floor(item.nextTime / 60);
-                    const m = item.nextTime % 60;
-                    const timeStr = `ー${h}:${m.toString().padStart(2, '0')}ー`;
-                    
+                    const timeStr = formatTime(item.nextTime);
                     const timeLabel = document.createElement('span');
                     timeLabel.className = 'time-label';
                     timeLabel.innerText = timeStr;
                     editArea.appendChild(timeLabel);
-                    
                     displayText += timeStr;
                 }
             });
-
             finalResult.innerText = displayText;
         }
 
         function removePoint(index) {
             if (courseData.length <= 1) return;
-
-            // 地点を消す際、その地点の「次のタイム」を前の地点に合算する
-            if (index > 0) {
-                courseData[index - 1].nextTime += courseData[index].nextTime;
-            }
-            
+            if (index > 0) courseData[index - 1].nextTime += courseData[index].nextTime;
             courseData.splice(index, 1);
             render();
         }
 
         function copyFinal() {
-            const text = document.getElementById('finalResult').innerText;
-            navigator.clipboard.writeText(text).then(() => {
-                alert("最終コースをコピーしました！");
+            navigator.clipboard.writeText(document.getElementById('finalResult').innerText).then(() => {
+                alert("コピーしました！");
             });
         }
     </script>
